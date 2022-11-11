@@ -49,7 +49,6 @@ impl JobCreator {
     async fn split_collection(&self, db : String, coll : String) {
         
         println!("processing the namespace {} . {}", db, coll);
-        
         let collection = self.client.database(db.as_str()).collection(coll.as_str());
         let data : Result<mongodb::Cursor<Document>, ()>= collection.find(None, None)
         .await
@@ -58,14 +57,14 @@ impl JobCreator {
         match data {
             Ok(mut cursor) => {
                 // I want to iterate the returned documents here
-                // this doesn't compiles
+                // this doesn't compile
                 while let Some(doc) = cursor.next().await {
                     let raw_doc = match doc {
                         Ok(rd) => rd,
                         Err(err) => panic!("error creating mongo client: {:?}", err),
                     };
 
-                    //println!("{}",raw_doc.get("_id").unwrap());
+                    println!("{}",raw_doc.get("_id").unwrap());
                     
                 }
             },

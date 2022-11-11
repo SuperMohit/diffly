@@ -8,7 +8,7 @@ mod worker;
 
 #[tokio::main]
 async fn main(){
-    let result = storage::Create_Client("".to_string()).await;
+    let result = storage::create_client("".to_string()).await;
 
     let m_client = match result {
         Ok(client) => client,

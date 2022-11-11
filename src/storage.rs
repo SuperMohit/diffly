@@ -2,7 +2,7 @@
 
 use mongodb::{Client, options::ClientOptions};
 
-pub(crate) async fn Create_Client(uri :String) -> Result<Client, mongodb::error::Error>{
+pub(crate) async fn create_client(uri :String) -> Result<Client, mongodb::error::Error>{
 
     // Parse a connection string into an options struct.
     let mut client_options = ClientOptions::parse(uri).await?;
