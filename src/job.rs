@@ -1,18 +1,37 @@
-use mongodb::{Client, bson::Document};
-use futures::{stream, StreamExt};
 
+
+use mongodb::{Client, bson::{Document, Bson}};
+use futures::{stream, StreamExt};
+use serde::{Serialize, Deserialize};
 
 // creats task for verification
 pub struct JobCreator {
    pub client : Client
 }
 
-pub struct Job {
-    id :  String,
-    filter : String,
-    doc_ids : String,
-    status : String,
+#[derive(Serialize, Deserialize, Debug)]
+enum Status {
+    New,
+    Processing,
+    Verified,
+    Retry
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Job {
+    id :  Option<mongodb::bson::oid::ObjectId>,
+    filter : QFilter,
+    doc_ids : Vec<Bson>,
+    status : Status,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct QFilter {
+    db : String,
+    coll: String,
+    query: Option<mongodb::bson::Document>
+}
+
 
 impl JobCreator {
     // breaks each collection into smaller tasks 
@@ -47,26 +66,56 @@ impl JobCreator {
     
     }
     async fn split_collection(&self, db : String, coll : String) {
-        
         println!("processing the namespace {} . {}", db, coll);
+        
         let collection = self.client.database(db.as_str()).collection(coll.as_str());
+        let task_coll  = self.client.database("meta").collection("task");
+        
         let data : Result<mongodb::Cursor<Document>, ()>= collection.find(None, None)
         .await
         .map_err(|e| println!("{}", e));
        // data is a Result<mongodb::Cursor> type
         match data {
-            Ok(mut cursor) => {
-                // I want to iterate the returned documents here
-                // this doesn't compile
+            Ok(mut cursor) => {                
+                
+                let mut docs : Vec<Bson> = Vec::new();
+                let mut count : i64 = 0;
+                let f = QFilter{ db : db.to_string(), coll: coll.to_string(), query: None }; 
+                
                 while let Some(doc) = cursor.next().await {
+                    if count%1000 == 0 && !docs.is_empty(){
+                        let j = Job{
+                            filter: f.clone(),
+                            doc_ids: docs.clone(),
+                            status: Status::New,
+                            id: None,
+                        };
+                        let _r  = task_coll.insert_one(j, None).await.unwrap();
+                        docs.clear();
+                    }                    
                     let raw_doc = match doc {
                         Ok(rd) => rd,
                         Err(err) => panic!("error creating mongo client: {:?}", err),
                     };
-
-                    println!("{}",raw_doc.get("_id").unwrap());
-                    
+                    count+=1;                    
+                    let id = raw_doc.get("_id").unwrap();
+                    docs.push(id.to_owned());                    
+                }                
+                if !docs.is_empty() {
+                    let j = Job{
+                        filter: f,
+                        doc_ids: docs.clone(),
+                        status: Status::New,
+                        id: None,
+                    };
+                    let r = task_coll.insert_one(j, None).await;
+                    match r {
+                        Ok(res) => print!("added to task {}", res.inserted_id),
+                        Err(err) => print!("error found {}", err),
+                    }
                 }
+                
+
             },
             Err(e) => println!("{:?}", e),
         }
