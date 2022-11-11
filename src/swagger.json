@@ -1,0 +1,64 @@
+{
+    "openapi": "3.0.2",
+    "info": {
+      "title": "MongoDB verifier",
+      "description": "Compares docs between two MongoDB clusters",
+      "version": "0.0.1"
+    },
+    "paths": {
+      "/verify/{id}/status": {
+        "get": {
+          "description": "Get the status of running verification",
+          "responses": {
+            "200": {
+              "description": "Successfully fetched the status",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "userId": {
+                          "type": "number"
+                        },
+                        "id": {
+                          "type": "number"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "body": {
+                          "type": "string"
+                        }
+                      },
+                      "example": {
+                        "jobId": 1,
+                        "totalTasks": 1,
+                        "srcDocs": 1000,
+                        "tgtDocs": 1000,
+                        "progress": "10%",
+                        "status" : [],
+                        "failedCount": 10,
+                        "retryCount" : 30
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/verify": {
+        "post" : {
+            "responses": {
+                "200" :{
+                    "description": ""
+                }
+            }
+        }   
+      }
+    }
+  }
+  
