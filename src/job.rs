@@ -1,5 +1,3 @@
-
-
 use mongodb::{Client, bson::{Document, Bson}};
 use futures::{stream, StreamExt};
 use serde::{Serialize, Deserialize};
@@ -55,6 +53,8 @@ impl JobCreator {
        Ok("yes".to_string())
     }
 
+    // processes the namespace in parallel depending on concurrency set
+    // todo: read concurrency from config  
     async fn create_sub_jobs(&self, namespaces : &Vec<String>) {
         let concurrency = 8;
         stream::iter(namespaces)
@@ -65,6 +65,11 @@ impl JobCreator {
             .await; 
     
     }
+
+    // opens a cursor to individual collections
+    // creates a task for workers so they can verify the document
+    // batch size is default to 1000 but should be configured based on
+    // the docs size and VMs resources 
     async fn split_collection(&self, db : String, coll : String) {
         println!("processing the namespace {} . {}", db, coll);
         
@@ -83,7 +88,8 @@ impl JobCreator {
                 let f = QFilter{ db : db.to_string(), coll: coll.to_string(), query: None }; 
                 
                 while let Some(doc) = cursor.next().await {
-                    if count%1000 == 0 && !docs.is_empty(){
+                    if count % 1000 == 0 && !docs.is_empty(){
+                        
                         let j = Job{
                             filter: f.clone(),
                             doc_ids: docs.clone(),
@@ -100,7 +106,9 @@ impl JobCreator {
                     count+=1;                    
                     let id = raw_doc.get("_id").unwrap();
                     docs.push(id.to_owned());                    
-                }                
+                }
+                
+                // check for vector incase docs length is > 0
                 if !docs.is_empty() {
                     let j = Job{
                         filter: f,
