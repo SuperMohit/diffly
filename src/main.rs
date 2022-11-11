@@ -8,7 +8,7 @@ mod worker;
 
 #[tokio::main]
 async fn main(){
-    let result = storage::create_client("mongodb+srv://mongopush:mongopush@mongoback.kn30v.mongodb.net".to_string()).await;
+    let result = storage::create_client("".to_string()).await;
 
     let m_client = match result {
         Ok(client) => client,
