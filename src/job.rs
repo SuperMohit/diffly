@@ -2,13 +2,15 @@ use mongodb::{Client, bson::{Document, Bson}};
 use futures::{stream, StreamExt};
 use serde::{Serialize, Deserialize};
 
+
+
 // creats task for verification
 pub struct JobCreator {
    pub client : Client
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-enum Status {
+pub enum Status {
     New,
     Processing,
     Verified,
@@ -18,16 +20,18 @@ enum Status {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Job {
     id :  Option<mongodb::bson::oid::ObjectId>,
-    filter : QFilter,
-    doc_ids : Vec<Bson>,
-    status : Status,
+    pub filter : QFilter,
+    pub doc_ids : Vec<Bson>,
+    pub status : Status
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct QFilter {
-    db : String,
-    coll: String,
-    query: Option<mongodb::bson::Document>
+    pub db : String,
+    pub coll: String,
+    pub query: Option<mongodb::bson::Document>,
+    pub to_db: Option<String>,
+    pub to_coll: Option<String>,
 }
 
 
@@ -85,7 +89,8 @@ impl JobCreator {
                 
                 let mut docs : Vec<Bson> = Vec::new();
                 let mut count : i64 = 0;
-                let f = QFilter{ db : db.to_string(), coll: coll.to_string(), query: None }; 
+                let f = QFilter{ db : db.to_string(), coll: coll.to_string(), 
+                    query: None, to_coll: Some(coll.to_string()), to_db: Some(db.to_string())}; 
                 
                 while let Some(doc) = cursor.next().await {
                     if count % 1000 == 0 && !docs.is_empty(){
@@ -96,6 +101,8 @@ impl JobCreator {
                             status: Status::New,
                             id: None,
                         };
+                        // let it panic so that no doc range is missed.
+                        // TODO: retry
                         let _r  = task_coll.insert_one(j, None).await.unwrap();
                         docs.clear();
                     }                    
@@ -119,11 +126,9 @@ impl JobCreator {
                     let r = task_coll.insert_one(j, None).await;
                     match r {
                         Ok(res) => print!("added to task {}", res.inserted_id),
-                        Err(err) => print!("error found {}", err),
+                        Err(err) => print!("error occurred {}", err),
                     }
                 }
-                
-
             },
             Err(e) => println!("{:?}", e),
         }
