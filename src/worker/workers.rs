@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::Bytes};
 
 use futures::{stream, StreamExt};
-use mongodb::{options::FindOptions, bson::{Document}, Collection};
-use crate::{job::Job, diffv::model::Diff};
+use mongodb::{options::FindOptions, bson::{Document, Bson}, Collection};
+use crate::{job::{Job, Status}, diffv::model::Diff};
 
 
 
@@ -19,28 +19,31 @@ pub struct Report<T> {
 }
 
 impl Worker {
-    async fn compute_job(&self, job: Job) -> i64 {
+    async fn compute_job<'a>(&'a self, job: &'a mut Job) -> &Job {
         let src_db_name = job.filter.db.clone();
-        let tgt_db_name = match job.filter.to_db {
+        let tgt_db_name = match &job.filter.to_db {
             Some(db) => db,
-            None => job.filter.db,
+            None => &job.filter.db,
         };
 
         let src_coll_name = job.filter.coll.clone();        
-        let tgt_coll_name = match job.filter.to_coll {
+        let tgt_coll_name = match &job.filter.to_coll {
             Some(coll) => coll,
-            None => job.filter.coll,
+            None =>& job.filter.coll,
         };
 
         let src_collection = self.diff.src_client.database(&src_db_name).collection::<Document>(&src_coll_name);
         let tgt_collection = self.diff.src_client.database(&tgt_db_name).collection::<Document>(&tgt_coll_name);
-
-        let src_docs = self.fetch_docs(src_collection);
-        let tgt_docs = self.fetch_docs(tgt_collection);
-
-
+        let src_docs = self.fetch_docs(src_collection).await;
+        let tgt_docs = self.fetch_docs(tgt_collection).await;
         
-        0
+        let report = self.compare_docs(&src_docs, &tgt_docs);
+        
+        if report.len() > 0 {
+            job.doc_ids = report;
+            job.status = Status::Retry;
+        } 
+        job
 
       }
 
@@ -68,12 +71,8 @@ impl Worker {
     }   
 
 
-
-
-
-
-pub async fn process_result(&self, result: i64) {
-    println!("{}", result);
+pub fn process_result(&self, result: &Job) {
+   
     
 }
 
@@ -84,11 +83,9 @@ pub async fn task(&self) {
                   .limit(8)
                   .build();
 
-
     let mut iter = 1;              
     loop {
         println!("{}", iter);
-
         let mut jobs: Vec<Job> = Vec::new();
         let data   = task_coll.find(None, options.clone()).
         await
@@ -102,41 +99,37 @@ pub async fn task(&self) {
                     };
                     jobs.push(raw_doc);
                 }
-              
             },
-            Err(e) => println!("{:?}", e),
-            
+            Err(e) => println!("{:?}", e),        
         }
         stream::iter(jobs)
-            .for_each_concurrent(8, |job| async move {
-
-                let result = self.compute_job(job).await;
-                self.process_result(result).await;
-            
+            .for_each_concurrent(8, |mut job| async move {
+                let result = self.compute_job(&mut job).await;                
+                self.process_result(result);
             }).await;
-          
             iter = iter + 1;
     }
-    
-    
 }
 
 
-async fn compare_docs(&self, src_docs : HashMap<String, Document>, tgt_docs : HashMap<String, Document>) {
-   
-    //let failed = Vec::new();
-
-
-    for (id, doc) in &src_docs {
+ fn compare_docs<'a>(&'a self, src_docs : &'a HashMap<String, Document>, 
+            tgt_docs : &'a HashMap<String, Document>) -> Vec<Bson> {
+    let mut failed_docs : Vec<Bson>= Vec::new(); 
+    for (id, src_doc) in src_docs {
         match tgt_docs.get(id) {
-            Some(_) => {},
+            Some(tgt_doc) => {
+                if src_doc == tgt_doc {
+                    let id = tgt_doc.get("_id").unwrap();
+                    failed_docs.push(id.to_owned());
+                }
+            },
             None => {
-
+                let id = src_doc.get("_id").unwrap();
+                failed_docs.push(id.to_owned());
             },
         }
-      };
-
-      
+      }
+      failed_docs
 }
 
 }
