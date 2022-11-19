@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::Bytes};
+use std::collections::HashMap;
 
 use futures::{stream, StreamExt};
 use mongodb::{options::FindOptions, bson::{Document, Bson}, Collection};
@@ -11,12 +11,12 @@ pub struct Worker {
 }
 
 
-pub struct Report<T> {
-    pub doc_id : T,
-    pub details : String,
-    pub cluster : String,
-    pub namespace: String,
-}
+// pub struct Report<T> {
+//     pub doc_id : T,
+//     pub details : String,
+//     pub cluster : String,
+//     pub namespace: String,
+// }
 
 impl Worker {
     async fn compute_job<'a>(&'a self, job: &'a mut Job) -> &Job {
@@ -71,41 +71,51 @@ impl Worker {
     }   
 
 
-pub fn process_result(&self, result: &Job) {
-   
+    pub async fn process_result(&self, job: &Job) {
+    let tgt_db_name = match &job.filter.to_db {
+        Some(db) => db,
+        None => &job.filter.db,
+    };
+
+    let task_coll = self.diff.src_client.database(&tgt_db_name).collection::<Job>("v_task");
     
+    let r = task_coll.insert_one(job, None).await;
+    match r {
+        Ok(res) => print!("added to task {}", res.inserted_id),
+        Err(err) => print!("error occurred {}", err),
+    }
 }
 
 
-pub async fn task(&self) {
-    let task_coll  = self.diff.meta_client.database("meta").collection::<Job>("task");
-    let options = FindOptions::builder()
+    pub async fn task(&self) {
+        let task_coll  = self.diff.meta_client.database("meta").collection::<Job>("task");
+        let options = FindOptions::builder()
                   .limit(8)
                   .build();
 
-    let mut iter = 1;              
-    loop {
-        println!("{}", iter);
-        let mut jobs: Vec<Job> = Vec::new();
-        let data   = task_coll.find(None, options.clone()).
-        await
-        .map_err(|e| println!("{}", e));
-        match data {
-            Ok(mut cursor) => { 
-                while let Some(doc) = cursor.next().await {
-                    let raw_doc = match doc {
-                        Ok(rd) => rd,
-                        Err(err) => panic!("error creating mongo client: {:?}", err),
-                    };
-                    jobs.push(raw_doc);
-                }
+        let mut iter = 1;              
+        loop {
+            println!("{}", iter);
+            let mut jobs: Vec<Job> = Vec::new();
+            let data   = task_coll.find(None, options.clone()).
+            await
+            .map_err(|e| println!("{}", e));
+            match data {
+                Ok(mut cursor) => { 
+                    while let Some(doc) = cursor.next().await {
+                        let raw_doc = match doc {
+                            Ok(rd) => rd,
+                            Err(err) => panic!("error creating mongo client: {:?}", err),
+                        };
+                        jobs.push(raw_doc);
+                    }
             },
-            Err(e) => println!("{:?}", e),        
+            Err(_) => break,        
         }
         stream::iter(jobs)
             .for_each_concurrent(8, |mut job| async move {
                 let result = self.compute_job(&mut job).await;                
-                self.process_result(result);
+                self.process_result(result).await;
             }).await;
             iter = iter + 1;
     }
@@ -118,8 +128,11 @@ pub async fn task(&self) {
     for (id, src_doc) in src_docs {
         match tgt_docs.get(id) {
             Some(tgt_doc) => {
+                let id = tgt_doc.get("_id").unwrap();
                 if src_doc == tgt_doc {
-                    let id = tgt_doc.get("_id").unwrap();
+                    // TODO compare each field
+                    continue;
+                } else {
                     failed_docs.push(id.to_owned());
                 }
             },
