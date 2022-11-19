@@ -49,7 +49,7 @@ async fn main(){
         diff: d
     };
 
-    w.task();
+    w.task().await;
 
 }
 
