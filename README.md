@@ -1,4 +1,5 @@
-# Diffly: Fast MongoDB comparator written in Rust
+# Diffly  
+## Fast MongoDB comparator in Rust
 Compares 2 MongoDB clusters
 
 You do not want to use it yet. 
