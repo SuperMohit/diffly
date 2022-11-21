@@ -1,4 +1,4 @@
-# diffly
+# Diffly
 Compares 2 MongoDB clusters
 
 You do not want to use it yet. 
